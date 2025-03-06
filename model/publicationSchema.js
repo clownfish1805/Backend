@@ -30,10 +30,6 @@ const publicationSchema = new mongoose.Schema({
     type: String, 
     required: true,
   },
-  data: {
-    type: mongoose.Schema.Types.Mixed, 
-    required: false,
-  },
   pdf: {
     type: Buffer,
     required: true,

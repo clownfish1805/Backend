@@ -157,7 +157,7 @@ app.delete("/publications/:id", async (req, res) => {
 
 // 5. Add a new publication
 app.post("/publications", upload.single("pdf"), async (req, res) => {
-  const { year, volume, issue, title, content,author, data, isSpecialIssue } = req.body;
+  const { year, volume, issue, title, content,author, isSpecialIssue } = req.body;
 
   // Validate required fields
   if (!year || !volume || !issue || !title || !content || !author || !req.file) {
@@ -173,7 +173,6 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
       title,
       content,
       author,
-      data, // Optional field
       isSpecialIssue: isSpecialIssue !== undefined ? isSpecialIssue : false,
       pdf: req.file.buffer, // Store PDF as binary
       pdfContentType: req.file.mimetype,
