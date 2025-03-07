@@ -155,6 +155,32 @@ app.delete("/publications/:id", async (req, res) => {
   }
 });
 
+app.get("/view-pdf/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    // console.log("Requested ID:", id);
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid ID format." });
+    }
+
+    const publication = await Publication.findById(id);
+    // console.log("Publication found:", publication);
+
+    if (!publication || !publication.pdf) {
+      return res.status(404).json({ error: "PDF not found." });
+    }
+
+    res.setHeader("Content-Type", publication.pdfContentType || "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="document.pdf"`);
+
+    res.send(Buffer.from(publication.pdf.buffer)); // Convert to Buffer if stored as Binary
+  } catch (err) {
+    console.error("Error viewing PDF:", err.message);
+    res.status(500).json({ error: "Failed to view PDF." });
+  }
+});
+
 // 5. Add a new publication
 app.post("/publications", upload.single("pdf"), async (req, res) => {
   const { year, volume, issue, title, content,author, isSpecialIssue } = req.body;
