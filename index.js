@@ -1,8 +1,8 @@
 const express = require("express");
 const cors = require("cors");
-const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
+const axios = require("axios");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -12,7 +12,7 @@ app.use(cors());
 app.use(express.json());
 
 // Import Schema
-const Publication = require(path.join(__dirname, "model/publicationSchema"));
+// const Publication = require(path.join(__dirname, "model/publicationSchema"));
 
 // Configure Multer for PDF uploads (store in memory)
 const storage = multer.memoryStorage();
@@ -33,32 +33,21 @@ app.use((req, res, next) => {
   next();
 });
 
-// Database Connection
-const connectDB = async () => {
-  try {
-    await mongoose.connect(
-      "mongodb+srv://academicdevelopmentforum24:Publisher24@publisher.fcpbj.mongodb.net/publication",
-    );
-    console.log("Connected to DB");
-  } catch (err) {
-    console.error("Database connection error:", err.message);
-    process.exit(1); 
-  }
-};
-
-// Routes
-
 // 🔹 Download PDF Route
 app.get("/download-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const publication = await Publication.findById(id);
+    const response = await axios.get(`http://61.2.79.154:15002/publications/${id}`, {
+      responseType: "arraybuffer",
+    });
+
+    const publication = response.data;
 
     if (!publication || !publication.pdf) {
       return res.status(404).json({ error: "PDF not found." });
     }
 
-    res.set("Content-Type", publication.pdfContentType);
+    res.set("Content-Type", publication.pdfContentType || "application/pdf");
     res.set("Content-Disposition", `attachment; filename="${publication.title}.pdf"`);
     res.send(publication.pdf);
   } catch (err) {
@@ -70,8 +59,8 @@ app.get("/download-pdf/:id", async (req, res) => {
 // 1. Fetch all distinct years
 app.get("/years", async (req, res) => {
   try {
-    const years = await Publication.distinct("year");
-    res.json(years);
+    const response = await axios.get("http://61.2.79.154:15002/years");
+    res.json(response.data);
   } catch (err) {
     console.error("Error fetching years:", err.message);
     res.status(500).json({ error: "Failed to fetch years." });
@@ -87,8 +76,8 @@ app.get("/volumes", async (req, res) => {
   }
 
   try {
-    const volumes = await Publication.find({ year: Number(year) }).distinct("volume");
-    res.json(volumes);
+    const response = await axios.get("http://61.2.79.154:15002/volumes", { params: { year } });
+    res.json(response.data);
   } catch (err) {
     console.error("Error fetching volumes:", err.message);
     res.status(500).json({ error: "Failed to fetch volumes." });
@@ -97,17 +86,9 @@ app.get("/volumes", async (req, res) => {
 
 // 3. Fetch data for a specific year and volume
 app.get("/publications", async (req, res) => {
-  const { year, volume, issue, isSpecialIssue } = req.query;
-
   try {
-    const query = {};
-    if (year) query.year = Number(year);
-    if (volume) query.volume = volume;
-    if (issue) query.issue = Number(issue);
-    if (isSpecialIssue !== undefined) query.isSpecialIssue = isSpecialIssue === "true";
-
-    const publications = await Publication.find(query);
-    res.json(publications);
+    const response = await axios.get("http://61.2.79.154:15002/publications", { params: req.query });
+    res.json(response.data);
   } catch (err) {
     console.error("Error fetching publications:", err.message);
     res.status(500).json({ error: "Failed to fetch publications." });
@@ -115,18 +96,10 @@ app.get("/publications", async (req, res) => {
 });
 
 app.get("/special-issues", async (req, res) => {
-  const { year, volume, issue } = req.query;
-
   try {
-    const query = { isSpecialIssue: true };
-
-    if (year) query.year = Number(year);
-    if (volume) query.volume = volume;
-    if (issue) query.issue = Number(issue);
-
-    const specialIssues = await Publication.find(query);
-
-    res.json(specialIssues);
+    const query = { ...req.query, isSpecialIssue: true };
+    const response = await axios.get("http://61.2.79.154:15002/publications", { params: query });
+    res.json(response.data);
   } catch (err) {
     console.error("Error fetching special issues:", err.message);
     res.status(500).json({ error: "Failed to fetch special issues." });
@@ -142,13 +115,8 @@ app.delete("/publications/:id", async (req, res) => {
   }
 
   try {
-    const deletedPublication = await Publication.findByIdAndDelete(id);
-
-    if (!deletedPublication) {
-      return res.status(404).json({ error: "Publication not found." });
-    }
-
-    res.json({ message: "Publication deleted successfully.", data: deletedPublication });
+    const response = await axios.delete(`http://61.2.79.154:15002/publications/${id}`);
+    res.json({ message: "Publication deleted successfully.", data: response.data });
   } catch (err) {
     console.error("Error deleting publication:", err.message);
     res.status(500).json({ error: "Failed to delete publication." });
@@ -158,14 +126,12 @@ app.delete("/publications/:id", async (req, res) => {
 app.get("/view-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    // console.log("Requested ID:", id);
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid ID format." });
-    }
+    const response = await axios.get(`http://61.2.79.154:15002/publications/${id}`, {
+      responseType: "arraybuffer",
+    });
 
-    const publication = await Publication.findById(id);
-    // console.log("Publication found:", publication);
+    const publication = response.data;
 
     if (!publication || !publication.pdf) {
       return res.status(404).json({ error: "PDF not found." });
@@ -174,7 +140,7 @@ app.get("/view-pdf/:id", async (req, res) => {
     res.setHeader("Content-Type", publication.pdfContentType || "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="document.pdf"`);
 
-    res.send(Buffer.from(publication.pdf.buffer)); // Convert to Buffer if stored as Binary
+    res.send(publication.pdf);
   } catch (err) {
     console.error("Error viewing PDF:", err.message);
     res.status(500).json({ error: "Failed to view PDF." });
@@ -183,33 +149,34 @@ app.get("/view-pdf/:id", async (req, res) => {
 
 // 5. Add a new publication
 app.post("/publications", upload.single("pdf"), async (req, res) => {
-  const { year, volume, issue, title, content,author, isSpecialIssue } = req.body;
+  const { year, volume, issue, title, content, author, isSpecialIssue } = req.body;
 
-  // Validate required fields
   if (!year || !volume || !issue || !title || !content || !author || !req.file) {
     return res.status(400).json({ error: "All required fields must be provided, including a PDF." });
   }
 
   try {
-    // Create a new publication with PDF
-    const newPublication = new Publication({
-      year,
-      volume,
-      issue,
-      title,
-      content,
-      author,
-      isSpecialIssue: isSpecialIssue !== undefined ? isSpecialIssue : false,
-      pdf: req.file.buffer, // Store PDF as binary
-      pdfContentType: req.file.mimetype,
-    });
-
-    // Save to the database
-    const savedPublication = await newPublication.save();
+    const response = await axios.post(
+      "http://61.2.79.154:15002/publications",
+      {
+        year,
+        volume,
+        issue,
+        title,
+        content,
+        author,
+        isSpecialIssue: isSpecialIssue !== undefined ? isSpecialIssue : false,
+        pdf: req.file.buffer,
+        pdfContentType: req.file.mimetype,
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
 
     res.status(201).json({
       message: "Publication added successfully with PDF.",
-      data: savedPublication,
+      data: response.data,
     });
   } catch (err) {
     console.error("Error adding publication:", err.message);
@@ -219,7 +186,6 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
 
 // Start Server
 const startServer = async () => {
-  await connectDB();
 
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
