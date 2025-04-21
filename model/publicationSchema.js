@@ -31,7 +31,7 @@ const publicationSchema = new mongoose.Schema({
     required: true,
   },
   pdf: {
-    type: Buffer,
+    type: String,
     required: true,
   },
   pdfContentType: {
