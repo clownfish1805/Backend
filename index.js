@@ -3,7 +3,8 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
-const fs = require('fs');
+const fs = require("fs");
+const { create } = require("xmlbuilder2"); // For XML creation
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -16,7 +17,7 @@ app.use(express.json());
 const Publication = require(path.join(__dirname, "model/publicationSchema"));
 
 // Ensure the uploads directory exists
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true }); // Create directory if it doesn't exist
 }
@@ -24,11 +25,11 @@ if (!fs.existsSync(uploadsDir)) {
 // Configure Multer for PDF uploads (store in memory)
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/'); // Specify the directory where PDFs will be stored
+    cb(null, "uploads"); // Specify the directory where PDFs will be stored
   },
   filename: function (req, file, cb) {
     cb(null, Date.now() + path.extname(file.originalname)); // Use timestamp as unique filename
-  }
+  },
 });
 
 const upload = multer({
@@ -40,7 +41,6 @@ const upload = multer({
       cb(new Error("Only PDF files are allowed!"), false);
     }
   },
-  
 });
 
 // Middleware for Logging Requests
@@ -53,7 +53,7 @@ app.use((req, res, next) => {
 const connectDB = async () => {
   try {
     await mongoose.connect(
-      "mongodb://admin:ijeae@61.2.79.154:27017/db_publications",
+      "mongodb://admin:ijeae@61.2.79.154:27017/db_publications"
     );
     console.log("Connected to DB");
   } catch (err) {
@@ -63,7 +63,6 @@ const connectDB = async () => {
 };
 
 // Routes
-
 // 🔹 Download PDF Route
 app.get("/download-pdf/:id", async (req, res) => {
   try {
@@ -75,7 +74,10 @@ app.get("/download-pdf/:id", async (req, res) => {
     }
 
     res.set("Content-Type", publication.pdfContentType);
-    res.set("Content-Disposition", `attachment; filename="${publication.title}.pdf"`);
+    res.set(
+      "Content-Disposition",
+      `attachment; filename="${publication.title}.pdf"`
+    );
     res.send(publication.pdf);
   } catch (err) {
     console.error("Error downloading PDF:", err.message);
@@ -103,7 +105,9 @@ app.get("/volumes", async (req, res) => {
   }
 
   try {
-    const volumes = await Publication.find({ year: Number(year) }).distinct("volume");
+    const volumes = await Publication.find({ year: Number(year) }).distinct(
+      "volume"
+    );
     res.json(volumes);
   } catch (err) {
     console.error("Error fetching volumes:", err.message);
@@ -120,7 +124,8 @@ app.get("/publications", async (req, res) => {
     if (year) query.year = Number(year);
     if (volume) query.volume = volume;
     if (issue) query.issue = Number(issue);
-    if (isSpecialIssue !== undefined) query.isSpecialIssue = isSpecialIssue === "true";
+    if (isSpecialIssue !== undefined)
+      query.isSpecialIssue = isSpecialIssue === "true";
 
     const publications = await Publication.find(query);
     res.json(publications);
@@ -164,13 +169,17 @@ app.delete("/publications/:id", async (req, res) => {
       return res.status(404).json({ error: "Publication not found." });
     }
 
-    res.json({ message: "Publication deleted successfully.", data: deletedPublication });
+    res.json({
+      message: "Publication deleted successfully.",
+      data: deletedPublication,
+    });
   } catch (err) {
     console.error("Error deleting publication:", err.message);
     res.status(500).json({ error: "Failed to delete publication." });
   }
 });
 
+//5. View
 app.get("/view-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -192,8 +201,14 @@ app.get("/view-pdf/:id", async (req, res) => {
       return res.status(404).json({ error: "PDF file not found on disk." });
     }
 
-    res.setHeader("Content-Type", publication.pdfContentType || "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${publication.title}.pdf"`);
+    res.setHeader(
+      "Content-Type",
+      publication.pdfContentType || "application/pdf"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${publication.title}.pdf"`
+    );
 
     const fileStream = fs.createReadStream(pdfPath);
     fileStream.pipe(res);
@@ -203,13 +218,65 @@ app.get("/view-pdf/:id", async (req, res) => {
   }
 });
 
-// 5. Add a new publication
+// 6. prefill data in update
+
+app.get("/publications/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid publication ID." });
+    }
+
+    const publication = await Publication.findById(id);
+
+    if (!publication) {
+      return res.status(404).json({ error: "Publication not found." });
+    }
+
+    res.status(200).json(publication);
+  } catch (err) {
+    console.error("Error fetching publication:", err.message);
+    res.status(500).json({ error: "Failed to fetch publication." });
+  }
+});
+
+// 7.Update
+app.put("/publications/:id", async (req, res) => {
+  console.log("Update request received for ID:", req.params.id);
+  const { id } = req.params;
+  const updatedData = req.body;
+
+  try {
+    const result = await Publication.findByIdAndUpdate(id, updatedData, {
+      new: true,
+    });
+    if (!result)
+      return res.status(404).json({ error: "Publication not found" });
+    res.status(200).json(result);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// 8. Add a new publication
 app.post("/publications", upload.single("pdf"), async (req, res) => {
-  const { year, volume, issue, title, content, author, isSpecialIssue } = req.body;
+  const { year, volume, issue, title, content, author, isSpecialIssue } =
+    req.body;
 
   // Validate required fields
-  if (!year || !volume || !issue || !title || !content || !author || !req.file) {
-    return res.status(400).json({ error: "All required fields must be provided, including a PDF." });
+  if (
+    !year ||
+    !volume ||
+    !issue ||
+    !title ||
+    !content ||
+    !author ||
+    !req.file
+  ) {
+    return res.status(400).json({
+      error: "All required fields must be provided, including a PDF.",
+    });
   }
 
   try {
@@ -229,16 +296,53 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
     // Save to the database
     const savedPublication = await newPublication.save();
 
+    // Create XML content
+    const xml = create({ version: "1.0" })
+      .ele("publication")
+      .ele("title")
+      .txt(title)
+      .up()
+      .ele("author")
+      .txt(author)
+      .up()
+      .ele("volume")
+      .txt(volume)
+      .up()
+      .ele("issue")
+      .txt(issue)
+      .up()
+      .ele("year")
+      .txt(year)
+      .up()
+      .ele("isSpecialIssue")
+      .txt(String(isSpecialIssue))
+      .up()
+      .ele("content")
+      .txt(content)
+      .up()
+      .ele("id")
+      .txt(savedPublication._id.toString())
+      .up()
+      .end({ prettyPrint: true });
+
+    // Write XML to file
+    const xmlFilePath = path.join(
+      uploadsDir,
+      `publication-${savedPublication._id}.xml`
+    );
+    fs.writeFileSync(xmlFilePath, xml, "utf-8");
+
     res.status(201).json({
-      message: "Publication added successfully with PDF.",
+      message: "Publication added successfully with PDF and XML created.",
       data: savedPublication,
     });
   } catch (err) {
-    console.error("Error adding publication:", err); // Log the error for debugging
-    res.status(500).json({ error: "Failed to add publication.", details: err.message }); // Include the actual error message
+    console.error("Error adding publication:", err);
+    res
+      .status(500)
+      .json({ error: "Failed to add publication.", details: err.message });
   }
 });
-
 
 // Start Server
 const startServer = async () => {

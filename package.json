@@ -7,7 +7,7 @@
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "author": "Chandarshini",
+  "author": "Akkshara",
   "license": "ISC",
   "description": "",
   "dependencies": {
@@ -20,6 +20,8 @@
     "path": "^0.12.7",
     "publication_backend": "file:",
     "Router": "^2.1.0",
-    "server": "^1.0.41"
+    "server": "^1.0.41",
+    "xml": "^1.0.1",
+    "xmlbuilder2": "^3.1.1"
   }
 }
