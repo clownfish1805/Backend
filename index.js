@@ -204,30 +204,58 @@ app.get("/publications/:id", async (req, res) => {
   }
 });
 
-// 7.Update
+// Update publication and regenerate XML
 app.put("/publications/:id", async (req, res) => {
+  console.log("Update request received for ID:", req.params.id);
   const { id } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ error: "Invalid publication ID." });
-  }
-
   const updatedData = req.body;
-
-  // Log for debugging
-  console.log("Update request received for ID:", id);
-  console.log("Updated data:", updatedData);
 
   try {
     const result = await Publication.findByIdAndUpdate(id, updatedData, {
       new: true,
-      runValidators: true,
     });
+
     if (!result)
       return res.status(404).json({ error: "Publication not found" });
-    res.status(200).json(result);
+
+    // Regenerate XML
+    const xml = create({ version: "1.0" })
+      .ele("publication")
+      .ele("title")
+      .txt(result.title)
+      .up()
+      .ele("author")
+      .txt(result.author)
+      .up()
+      .ele("volume")
+      .txt(result.volume)
+      .up()
+      .ele("issue")
+      .txt(result.issue)
+      .up()
+      .ele("year")
+      .txt(result.year)
+      .up()
+      .ele("isSpecialIssue")
+      .txt(String(result.isSpecialIssue))
+      .up()
+      .ele("content")
+      .txt(result.content)
+      .up()
+      .ele("id")
+      .txt(result._id.toString())
+      .up()
+      .end({ prettyPrint: true });
+
+    const xmlFilePath = path.join(uploadsDir, `publication-${result._id}.xml`);
+    fs.writeFileSync(xmlFilePath, xml, "utf-8");
+
+    res.status(200).json({
+      message: "Publication updated and XML regenerated.",
+      data: result,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
