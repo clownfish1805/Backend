@@ -241,21 +241,37 @@ app.get("/publications/:id", async (req, res) => {
   }
 });
 
-// 7.Update
+// 7. Update
 app.put("/publications/:id", async (req, res) => {
-  console.log("Update request received for ID:", req.params.id);
   const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid publication ID." });
+  }
+
   const updatedData = req.body;
+
+  // Log for debugging
+  console.log("Update request received for ID:", id);
+  console.log("Updated data:", updatedData);
 
   try {
     const result = await Publication.findByIdAndUpdate(id, updatedData, {
       new: true,
+      runValidators: true,
     });
-    if (!result)
-      return res.status(404).json({ error: "Publication not found" });
-    res.status(200).json(result);
+
+    if (!result) {
+      return res.status(404).json({ error: "Publication not found." });
+    }
+
+    res.status(200).json({
+      message: "Publication updated successfully.",
+      data: result,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Error during update:", err.message);
+    res.status(500).json({ error: "Failed to update publication." });
   }
 });
 
