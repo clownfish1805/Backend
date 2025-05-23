@@ -210,6 +210,8 @@ app.put("/publications/:id", async (req, res) => {
   const { id } = req.params;
   const updatedData = req.body;
 
+  console.log("Sent data : ", updatedData);
+
   try {
     const result = await Publication.findByIdAndUpdate(id, updatedData, {
       new: true,
