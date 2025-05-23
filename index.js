@@ -4,52 +4,41 @@ const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { create } = require("xmlbuilder2"); // For XML creation
+const { create } = require("xmlbuilder2");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Import Schema
 const Publication = require(path.join(__dirname, "model/publicationSchema"));
 
-// Ensure the uploads directory exists
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true }); // Create directory if it doesn't exist
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configure Multer for PDF uploads (store in memory)
+// Multer setup
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads"); // Specify the directory where PDFs will be stored
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname)); // Use timestamp as unique filename
-  },
+  destination: (req, file, cb) => cb(null, "uploads"),
+  filename: (req, file, cb) =>
+    cb(null, Date.now() + path.extname(file.originalname)),
 });
 
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") {
-      cb(null, true);
-    } else {
-      cb(new Error("Only PDF files are allowed!"), false);
-    }
+    if (file.mimetype === "application/pdf") cb(null, true);
+    else cb(new Error("Only PDF files are allowed!"), false);
   },
 });
 
-// Middleware for Logging Requests
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
 
-// Database Connection
 const connectDB = async () => {
   try {
     await mongoose.connect(
@@ -62,16 +51,13 @@ const connectDB = async () => {
   }
 };
 
-// Routes
-// 🔹 Download PDF Route
+// Download PDF
 app.get("/download-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const publication = await Publication.findById(id);
-
-    if (!publication || !publication.pdf) {
+    if (!publication || !publication.pdf)
       return res.status(404).json({ error: "PDF not found." });
-    }
 
     res.set("Content-Type", publication.pdfContentType);
     res.set(
@@ -85,7 +71,7 @@ app.get("/download-pdf/:id", async (req, res) => {
   }
 });
 
-// 1. Fetch all distinct years
+// Fetch distinct years
 app.get("/years", async (req, res) => {
   try {
     const years = await Publication.distinct("year");
@@ -96,13 +82,11 @@ app.get("/years", async (req, res) => {
   }
 });
 
-// 2. Fetch volumes under a specific year
+// Fetch volumes
 app.get("/volumes", async (req, res) => {
   const { year } = req.query;
-
-  if (!year) {
+  if (!year)
     return res.status(400).json({ error: "Year parameter is required." });
-  }
 
   try {
     const volumes = await Publication.find({ year: Number(year) }).distinct(
@@ -115,7 +99,7 @@ app.get("/volumes", async (req, res) => {
   }
 });
 
-// 3. Fetch data for a specific year and volume
+// Fetch publications
 app.get("/publications", async (req, res) => {
   const { year, volume, issue, isSpecialIssue } = req.query;
 
@@ -140,13 +124,11 @@ app.get("/special-issues", async (req, res) => {
 
   try {
     const query = { isSpecialIssue: true };
-
     if (year) query.year = Number(year);
     if (volume) query.volume = volume;
     if (issue) query.issue = Number(issue);
 
     const specialIssues = await Publication.find(query);
-
     res.json(specialIssues);
   } catch (err) {
     console.error("Error fetching special issues:", err.message);
@@ -154,20 +136,14 @@ app.get("/special-issues", async (req, res) => {
   }
 });
 
-// 4. Delete a publication by ID
+// Delete publication
 app.delete("/publications/:id", async (req, res) => {
   const { id } = req.params;
 
-  if (!id) {
-    return res.status(400).json({ error: "Publication ID is required." });
-  }
-
   try {
     const deletedPublication = await Publication.findByIdAndDelete(id);
-
-    if (!deletedPublication) {
+    if (!deletedPublication)
       return res.status(404).json({ error: "Publication not found." });
-    }
 
     res.json({
       message: "Publication deleted successfully.",
@@ -179,27 +155,20 @@ app.delete("/publications/:id", async (req, res) => {
   }
 });
 
-//5. View
+// View PDF
 app.get("/view-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid ID format." });
-    }
 
     const publication = await Publication.findById(id);
-
-    if (!publication || !publication.pdf) {
+    if (!publication || !publication.pdf)
       return res.status(404).json({ error: "PDF not found." });
-    }
 
     const pdfPath = path.join(__dirname, publication.pdf);
-
-    // Check if file exists
-    if (!fs.existsSync(pdfPath)) {
+    if (!fs.existsSync(pdfPath))
       return res.status(404).json({ error: "PDF file not found on disk." });
-    }
 
     res.setHeader(
       "Content-Type",
@@ -209,7 +178,6 @@ app.get("/view-pdf/:id", async (req, res) => {
       "Content-Disposition",
       `inline; filename="${publication.title}.pdf"`
     );
-
     const fileStream = fs.createReadStream(pdfPath);
     fileStream.pipe(res);
   } catch (err) {
@@ -218,21 +186,16 @@ app.get("/view-pdf/:id", async (req, res) => {
   }
 });
 
-// 6. prefill data in update
-
+// Prefill
 app.get("/publications/:id", async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid publication ID." });
-    }
 
     const publication = await Publication.findById(id);
-
-    if (!publication) {
+    if (!publication)
       return res.status(404).json({ error: "Publication not found." });
-    }
 
     res.status(200).json(publication);
   } catch (err) {
@@ -241,7 +204,7 @@ app.get("/publications/:id", async (req, res) => {
   }
 });
 
-// 7. Update
+// 7.Update
 app.put("/publications/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -260,27 +223,19 @@ app.put("/publications/:id", async (req, res) => {
       new: true,
       runValidators: true,
     });
-
-    if (!result) {
-      return res.status(404).json({ error: "Publication not found." });
-    }
-
-    res.status(200).json({
-      message: "Publication updated successfully.",
-      data: result,
-    });
+    if (!result)
+      return res.status(404).json({ error: "Publication not found" });
+    res.status(200).json(result);
   } catch (err) {
-    console.error("Error during update:", err.message);
-    res.status(500).json({ error: "Failed to update publication." });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// 8. Add a new publication
+// Add publication
 app.post("/publications", upload.single("pdf"), async (req, res) => {
   const { year, volume, issue, title, content, author, isSpecialIssue } =
     req.body;
 
-  // Validate required fields
   if (
     !year ||
     !volume ||
@@ -296,7 +251,6 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
   }
 
   try {
-    // Create a new publication with PDF
     const newPublication = new Publication({
       year,
       volume,
@@ -305,14 +259,12 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
       content,
       author,
       isSpecialIssue: isSpecialIssue !== undefined ? isSpecialIssue : false,
-      pdf: req.file.path, // Store the file path, not buffer
+      pdf: req.file.path,
       pdfContentType: req.file.mimetype,
     });
 
-    // Save to the database
     const savedPublication = await newPublication.save();
 
-    // Create XML content
     const xml = create({ version: "1.0" })
       .ele("publication")
       .ele("title")
@@ -341,7 +293,6 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
       .up()
       .end({ prettyPrint: true });
 
-    // Write XML to file
     const xmlFilePath = path.join(
       uploadsDir,
       `publication-${savedPublication._id}.xml`
@@ -360,13 +311,10 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
   }
 });
 
-// Start Server
+// Start server
 const startServer = async () => {
   await connectDB();
-
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-  });
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 };
 
 startServer();
