@@ -19,9 +19,8 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Multer setup
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads"),
+  destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) =>
     cb(null, Date.now() + path.extname(file.originalname)),
 });
@@ -51,111 +50,36 @@ const connectDB = async () => {
   }
 };
 
+// ------------------- ROUTES -------------------
+
 // Download PDF
 app.get("/download-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid publication ID." });
+
     const publication = await Publication.findById(id);
     if (!publication || !publication.pdf)
       return res.status(404).json({ error: "PDF not found." });
+
+    const pdfPath = path.join(__dirname, publication.pdf);
+    if (!fs.existsSync(pdfPath))
+      return res.status(404).json({ error: "PDF file not found on disk." });
 
     res.set("Content-Type", publication.pdfContentType);
     res.set(
       "Content-Disposition",
       `attachment; filename="${publication.title}.pdf"`
     );
-    res.send(publication.pdf);
+    fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     console.error("Error downloading PDF:", err.message);
     res.status(500).json({ error: "Failed to download PDF." });
   }
 });
 
-// Fetch distinct years
-app.get("/years", async (req, res) => {
-  try {
-    const years = await Publication.distinct("year");
-    res.json(years);
-  } catch (err) {
-    console.error("Error fetching years:", err.message);
-    res.status(500).json({ error: "Failed to fetch years." });
-  }
-});
-
-// Fetch volumes
-app.get("/volumes", async (req, res) => {
-  const { year } = req.query;
-  if (!year)
-    return res.status(400).json({ error: "Year parameter is required." });
-
-  try {
-    const volumes = await Publication.find({ year: Number(year) }).distinct(
-      "volume"
-    );
-    res.json(volumes);
-  } catch (err) {
-    console.error("Error fetching volumes:", err.message);
-    res.status(500).json({ error: "Failed to fetch volumes." });
-  }
-});
-
-// Fetch publications
-app.get("/publications", async (req, res) => {
-  const { year, volume, issue, isSpecialIssue } = req.query;
-
-  try {
-    const query = {};
-    if (year) query.year = Number(year);
-    if (volume) query.volume = volume;
-    if (issue) query.issue = Number(issue);
-    if (isSpecialIssue !== undefined)
-      query.isSpecialIssue = isSpecialIssue === "true";
-
-    const publications = await Publication.find(query);
-    res.json(publications);
-  } catch (err) {
-    console.error("Error fetching publications:", err.message);
-    res.status(500).json({ error: "Failed to fetch publications." });
-  }
-});
-
-app.get("/special-issues", async (req, res) => {
-  const { year, volume, issue } = req.query;
-
-  try {
-    const query = { isSpecialIssue: true };
-    if (year) query.year = Number(year);
-    if (volume) query.volume = volume;
-    if (issue) query.issue = Number(issue);
-
-    const specialIssues = await Publication.find(query);
-    res.json(specialIssues);
-  } catch (err) {
-    console.error("Error fetching special issues:", err.message);
-    res.status(500).json({ error: "Failed to fetch special issues." });
-  }
-});
-
-// Delete publication
-app.delete("/publications/:id", async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const deletedPublication = await Publication.findByIdAndDelete(id);
-    if (!deletedPublication)
-      return res.status(404).json({ error: "Publication not found." });
-
-    res.json({
-      message: "Publication deleted successfully.",
-      data: deletedPublication,
-    });
-  } catch (err) {
-    console.error("Error deleting publication:", err.message);
-    res.status(500).json({ error: "Failed to delete publication." });
-  }
-});
-
-// View PDF
+// View PDF inline
 app.get("/view-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -178,15 +102,81 @@ app.get("/view-pdf/:id", async (req, res) => {
       "Content-Disposition",
       `inline; filename="${publication.title}.pdf"`
     );
-    const fileStream = fs.createReadStream(pdfPath);
-    fileStream.pipe(res);
+    fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     console.error("Error viewing PDF:", err.message);
     res.status(500).json({ error: "Failed to view PDF." });
   }
 });
 
-// Prefill
+// Get all years
+app.get("/years", async (req, res) => {
+  try {
+    const years = await Publication.distinct("year");
+    res.json(years);
+  } catch (err) {
+    console.error("Error fetching years:", err.message);
+    res.status(500).json({ error: "Failed to fetch years." });
+  }
+});
+
+// Get volumes for a year
+app.get("/volumes", async (req, res) => {
+  const { year } = req.query;
+  if (!year)
+    return res.status(400).json({ error: "Year parameter is required." });
+
+  try {
+    const volumes = await Publication.find({ year: Number(year) }).distinct(
+      "volume"
+    );
+    res.json(volumes);
+  } catch (err) {
+    console.error("Error fetching volumes:", err.message);
+    res.status(500).json({ error: "Failed to fetch volumes." });
+  }
+});
+
+// Get publications (with filters)
+app.get("/publications", async (req, res) => {
+  const { year, volume, issue, doi, isSpecialIssue } = req.query;
+
+  try {
+    const query = {};
+    if (year) query.year = Number(year);
+    if (volume) query.volume = volume;
+    if (issue) query.issue = Number(issue);
+    if (doi) query.issue = doi;
+    if (isSpecialIssue !== undefined)
+      query.isSpecialIssue = isSpecialIssue === "true";
+
+    const publications = await Publication.find(query);
+    res.json(publications);
+  } catch (err) {
+    console.error("Error fetching publications:", err.message);
+    res.status(500).json({ error: "Failed to fetch publications." });
+  }
+});
+
+// Get special issues
+app.get("/special-issues", async (req, res) => {
+  const { year, volume, issue } = req.query;
+
+  try {
+    const query = { isSpecialIssue: true };
+    if (year) query.year = Number(year);
+    if (volume) query.volume = volume;
+    if (issue) query.issue = Number(issue);
+
+    const specialIssues = await Publication.find(query);
+    res.json(specialIssues);
+  } catch (err) {
+    console.error("Error fetching special issues:", err.message);
+    res.status(500).json({ error: "Failed to fetch special issues." });
+  }
+});
+
+// Get single publication
 app.get("/publications/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -204,13 +194,10 @@ app.get("/publications/:id", async (req, res) => {
   }
 });
 
-// Update publication and regenerate XML
+// Update publication + regenerate XML
 app.put("/publications/:id", async (req, res) => {
-  console.log("Update request received for ID:", req.params.id);
   const { id } = req.params;
   const updatedData = req.body;
-
-  console.log("Sent data : ", updatedData);
 
   try {
     const result = await Publication.findByIdAndUpdate(id, updatedData, {
@@ -220,7 +207,6 @@ app.put("/publications/:id", async (req, res) => {
     if (!result)
       return res.status(404).json({ error: "Publication not found" });
 
-    // Regenerate XML
     const xml = create({ version: "1.0" })
       .ele("publication")
       .ele("title")
@@ -238,6 +224,10 @@ app.put("/publications/:id", async (req, res) => {
       .ele("year")
       .txt(result.year)
       .up()
+      .ele("doi")
+      .txt(result.doi || "")
+      .up()
+
       .ele("isSpecialIssue")
       .txt(String(result.isSpecialIssue))
       .up()
@@ -257,13 +247,41 @@ app.put("/publications/:id", async (req, res) => {
       data: result,
     });
   } catch (err) {
+    console.error("Error updating publication:", err.message);
     res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
-// Add publication
+// Delete publication
+app.delete("/publications/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const deletedPublication = await Publication.findByIdAndDelete(id);
+    if (!deletedPublication)
+      return res.status(404).json({ error: "Publication not found." });
+
+    if (deletedPublication.pdf && fs.existsSync(deletedPublication.pdf)) {
+      fs.unlinkSync(deletedPublication.pdf);
+    }
+    const xmlFilePath = path.join(uploadsDir, `publication-${id}.xml`);
+    if (fs.existsSync(xmlFilePath)) {
+      fs.unlinkSync(xmlFilePath);
+    }
+
+    res.json({
+      message: "Publication deleted successfully.",
+      data: deletedPublication,
+    });
+  } catch (err) {
+    console.error("Error deleting publication:", err.message);
+    res.status(500).json({ error: "Failed to delete publication." });
+  }
+});
+
+// Add new publication
 app.post("/publications", upload.single("pdf"), async (req, res) => {
-  const { year, volume, issue, title, content, author, isSpecialIssue } =
+  const { year, volume, issue, title, content, author, doi, isSpecialIssue } =
     req.body;
 
   if (
@@ -273,6 +291,7 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
     !title ||
     !content ||
     !author ||
+    !doi ||
     !req.file
   ) {
     return res.status(400).json({
@@ -288,7 +307,8 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
       title,
       content,
       author,
-      isSpecialIssue: isSpecialIssue !== undefined ? isSpecialIssue : false,
+      doi,
+      isSpecialIssue: isSpecialIssue === "true",
       pdf: req.file.path,
       pdfContentType: req.file.mimetype,
     });
@@ -298,25 +318,28 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
     const xml = create({ version: "1.0" })
       .ele("publication")
       .ele("title")
-      .txt(title)
+      .txt(savedPublication.title)
       .up()
       .ele("author")
-      .txt(author)
+      .txt(savedPublication.author)
       .up()
       .ele("volume")
-      .txt(volume)
+      .txt(savedPublication.volume)
       .up()
       .ele("issue")
-      .txt(issue)
+      .txt(savedPublication.issue)
       .up()
       .ele("year")
-      .txt(year)
+      .txt(savedPublication.year)
+      .up()
+      .ele("doi")
+      .txt(savedPublication.doi)
       .up()
       .ele("isSpecialIssue")
-      .txt(String(isSpecialIssue))
+      .txt(String(savedPublication.isSpecialIssue))
       .up()
       .ele("content")
-      .txt(content)
+      .txt(savedPublication.content)
       .up()
       .ele("id")
       .txt(savedPublication._id.toString())
@@ -330,21 +353,18 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
     fs.writeFileSync(xmlFilePath, xml, "utf-8");
 
     res.status(201).json({
-      message: "Publication added successfully with PDF and XML created.",
+      message: "Publication saved and XML generated.",
       data: savedPublication,
     });
   } catch (err) {
-    console.error("Error adding publication:", err);
-    res
-      .status(500)
-      .json({ error: "Failed to add publication.", details: err.message });
+    console.error("Error saving publication:", err.message);
+    res.status(500).json({ error: "Server error", details: err.message });
   }
 });
 
-// Start server
-const startServer = async () => {
-  await connectDB();
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-};
-
-startServer();
+// ------------------- START SERVER -------------------
+connectDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+});
