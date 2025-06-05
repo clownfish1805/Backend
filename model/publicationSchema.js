@@ -32,7 +32,7 @@ const publicationSchema = new mongoose.Schema(
       required: true,
     },
     doi: {
-      type: String, // ✅ New field for DOI
+      type: String, // New field for DOI
       required: true,
     },
     pdf: {

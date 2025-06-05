@@ -146,7 +146,7 @@ app.get("/publications", async (req, res) => {
     if (year) query.year = Number(year);
     if (volume) query.volume = volume;
     if (issue) query.issue = Number(issue);
-    if (doi) query.issue = doi;
+    if (doi) query.doi = doi;
     if (isSpecialIssue !== undefined)
       query.isSpecialIssue = isSpecialIssue === "true";
 
