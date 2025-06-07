@@ -115,8 +115,8 @@ app.get("/view-pdf/:id", async (req, res) => {
     // Send PDF inline
     res.setHeader("Content-Type", publication.pdfContentType || "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${publication.title || "document"}.pdf"`);
-
-    fs.createReadStream(pdfPath).pipe(res);
+     res.send(Buffer.from(publication.pdf.buffer)); // Convert to Buffer if stored as Binary
+    // fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     console.error("Error viewing PDF:", err.message);
     res.status(500).json({ error: "Failed to view PDF." });
