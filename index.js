@@ -79,35 +79,49 @@ app.get("/download-pdf/:id", async (req, res) => {
   }
 });
 
-// View PDF inline
+// Serve PDFs inline using publication ID
 app.get("/view-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id))
+
+    // Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid ID format." });
+    }
 
+    // Find the publication by ID
     const publication = await Publication.findById(id);
-    if (!publication || !publication.pdf)
-      return res.status(404).json({ error: "PDF not found." });
+    if (!publication) {
+      return res.status(404).json({ error: "Publication not found." });
+    }
 
+    // Check if PDF field exists
+    if (!publication.pdf) {
+      return res.status(404).json({ error: "PDF path not found in publication." });
+    }
+
+    // Build the correct path to the PDF (assumes relative path stored in DB like "uploads/xyz.pdf")
     const pdfPath = path.join(__dirname, publication.pdf);
-    if (!fs.existsSync(pdfPath))
-      return res.status(404).json({ error: "PDF file not found on disk." });
 
-    res.setHeader(
-      "Content-Type",
-      publication.pdfContentType || "application/pdf"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="${publication.title}.pdf"`
-    );
+    // Debug logging (optional)
+    console.log("Requested ID:", id);
+    console.log("Resolved PDF Path:", pdfPath);
+
+    // Check if file exists
+    if (!fs.existsSync(pdfPath)) {
+      return res.status(404).json({ error: "PDF file not found on disk." });
+    }
+
+    // Send PDF inline
+    res.setHeader("Content-Type", publication.pdfContentType || "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${publication.title || "document"}.pdf"`);
+
     fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     console.error("Error viewing PDF:", err.message);
     res.status(500).json({ error: "Failed to view PDF." });
   }
-});
+
 
 // Get all years
 app.get("/years", async (req, res) => {
