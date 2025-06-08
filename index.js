@@ -101,8 +101,14 @@ app.get("/view-pdf/:id", async (req, res) => {
       return res.status(404).json({ error: "PDF file not found on disk." });
     }
 
-    res.setHeader("Content-Type", publication.pdfContentType || "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${publication.title || "document"}.pdf"`);
+    res.setHeader(
+      "Content-Type",
+      publication.pdfContentType || "application/pdf"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${publication.title || "document"}.pdf"`
+    );
 
     fs.createReadStream(pdfPath).pipe(res); // ✅ This streams the file to the browser
   } catch (err) {
@@ -110,8 +116,6 @@ app.get("/view-pdf/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to view PDF." });
   }
 });
-
-
 
 // Get all years
 app.get("/years", async (req, res) => {
@@ -304,6 +308,9 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
   }
 
   try {
+    const relativePdfPath = path
+      .relative(__dirname, req.file.path)
+      .replace(/\\/g, "/");
     const newPublication = new Publication({
       year,
       volume,
@@ -313,7 +320,7 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
       author,
       doi,
       isSpecialIssue: isSpecialIssue === "true",
-      pdf: req.file.path,
+      pdf: relativePdfPath, // ✅ correct
       pdfContentType: req.file.mimetype,
     });
 
