@@ -198,10 +198,13 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
 app.put("/publications/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    console.log("Received data for update:", req.body);
+    
     const updated = await Publication.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
     });
+
 
     if (!updated)
       return res.status(404).json({ error: "Publication not found" });
