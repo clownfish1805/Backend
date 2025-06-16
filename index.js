@@ -195,19 +195,28 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
 });
 
 // Update publication
-app.put("/publications/:id", async (req, res) => {
+app.put("/publications/:id", upload.single("pdf"), async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("Received data for update:", req.body);
+
+    let updateData = { ...req.body };
     
-    const updated = await Publication.findByIdAndUpdate(id, req.body, {
+    if (req.file) {
+      // If new PDF uploaded, update path and content type
+      const relativePdfPath = path
+        .relative(__dirname, req.file.path)
+        .replace(/\\/g, "/");
+
+      updateData.pdf = relativePdfPath;
+      updateData.pdfContentType = req.file.mimetype;
+    }
+
+    const updated = await Publication.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     });
 
-
-    if (!updated)
-      return res.status(404).json({ error: "Publication not found" });
+    if (!updated) return res.status(404).json({ error: "Publication not found" });
 
     const xml = generateXML(updated);
     fs.writeFileSync(
@@ -221,6 +230,7 @@ app.put("/publications/:id", async (req, res) => {
     res.status(500).json({ error: "Update failed", details: err.message });
   }
 });
+
 
 // Delete publication
 app.delete("/publications/:id", async (req, res) => {
