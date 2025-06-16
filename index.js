@@ -195,29 +195,55 @@ app.post("/publications", upload.single("pdf"), async (req, res) => {
 });
 
 // Update publication
-app.put("/publications/:id", upload.single("pdf"), async (req, res) => {
+// Update publication via POST (with file)
+app.post("/publications/:id/update", upload.single("pdf"), async (req, res) => {
   try {
     const { id } = req.params;
 
-    let updateData = { ...req.body };
-    
+    // Validate MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid publication ID" });
+    }
+
+    // Check if record exists
+    const existing = await Publication.findById(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Publication not found" });
+    }
+
+    // Extract fields from req.body
+    const { year, volume, issue, title, content, author, doi, isSpecialIssue } = req.body;
+
+    // Update fields
+    if (year) existing.year = year;
+    if (volume) existing.volume = volume;
+    if (issue) existing.issue = issue;
+    if (title) existing.title = title;
+    if (content) existing.content = content;
+    if (author) existing.author = author;
+    if (doi) existing.doi = doi;
+    if (isSpecialIssue !== undefined) existing.isSpecialIssue = isSpecialIssue === "true";
+
+    // Handle PDF update (if new file uploaded)
     if (req.file) {
-      // If new PDF uploaded, update path and content type
+      // Delete old file
+      if (existing.pdf && fs.existsSync(path.join(__dirname, existing.pdf))) {
+        fs.unlinkSync(path.join(__dirname, existing.pdf));
+      }
+
+      // Save new file path
       const relativePdfPath = path
         .relative(__dirname, req.file.path)
         .replace(/\\/g, "/");
 
-      updateData.pdf = relativePdfPath;
-      updateData.pdfContentType = req.file.mimetype;
+      existing.pdf = relativePdfPath;
+      existing.pdfContentType = req.file.mimetype;
     }
 
-    const updated = await Publication.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    });
+    // Save updated publication
+    const updated = await existing.save();
 
-    if (!updated) return res.status(404).json({ error: "Publication not found" });
-
+    // Generate updated XML
     const xml = generateXML(updated);
     fs.writeFileSync(
       path.join(uploadsDir, `publication-${id}.xml`),
@@ -225,8 +251,9 @@ app.put("/publications/:id", upload.single("pdf"), async (req, res) => {
       "utf-8"
     );
 
-    res.status(200).json({ message: "Updated", data: updated });
+    res.status(200).json({ message: "Publication updated", data: updated });
   } catch (err) {
+    console.error("Update failed:", err);
     res.status(500).json({ error: "Update failed", details: err.message });
   }
 });
