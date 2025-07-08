@@ -9,14 +9,28 @@ const { create } = require("xmlbuilder2");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+const allowedOrigins = [
+  "https://www.ijeae.com",
+  "https://ijeae-upload-pi.vercel.app"
+];
+
 const corsOptions = {
-  origin: "https://www.ijeae.com", // ✅ Allow your frontend domain
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like curl or mobile apps)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("Not allowed by CORS"));
+    }
+  },
   methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 };
 
 app.use(cors(corsOptions));
+
 
 app.use(express.json());
 
