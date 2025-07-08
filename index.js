@@ -9,7 +9,15 @@ const { create } = require("xmlbuilder2");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.use(cors());
+const corsOptions = {
+  origin: "https://www.ijeae.com", // ✅ Allow your frontend domain
+  methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+
 app.use(express.json());
 
 const Publication = require(path.join(__dirname, "model/publicationSchema"));
