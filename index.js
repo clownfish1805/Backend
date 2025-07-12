@@ -123,7 +123,7 @@ const generateXML = (publication) => {
 
 // ---------- ROUTES ----------
 
-// View PDF inline
+// ---------- VIEW PDF INLINE ----------
 app.get("/view-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -134,7 +134,10 @@ app.get("/view-pdf/:id", async (req, res) => {
     if (!publication || !publication.pdf)
       return res.status(404).json({ error: "PDF not found" });
 
-    const pdfPath = path.join(__dirname, publication.pdf);
+    // ✅ Fix: Replace backslashes with slashes
+    const safeRelPath = publication.pdf.replace(/\\/g, "/");
+    const pdfPath = path.join(__dirname, safeRelPath);
+
     if (!fs.existsSync(pdfPath))
       return res.status(404).json({ error: "File missing" });
 
@@ -154,7 +157,8 @@ app.get("/view-pdf/:id", async (req, res) => {
   }
 });
 
-// Download PDF
+
+// ---------- DOWNLOAD PDF ----------
 app.get("/download-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -165,7 +169,10 @@ app.get("/download-pdf/:id", async (req, res) => {
     if (!publication || !publication.pdf)
       return res.status(404).json({ error: "PDF not found" });
 
-    const pdfPath = path.join(__dirname, publication.pdf);
+    // ✅ Fix: Replace backslashes with slashes
+    const safeRelPath = publication.pdf.replace(/\\/g, "/");
+    const pdfPath = path.join(__dirname, safeRelPath);
+
     if (!fs.existsSync(pdfPath))
       return res.status(404).json({ error: "File missing" });
 
@@ -179,6 +186,7 @@ app.get("/download-pdf/:id", async (req, res) => {
     res.status(500).json({ error: "Download failed" });
   }
 });
+
 
 // Create publication
 app.post("/publications", upload.single("pdf"), async (req, res) => {
