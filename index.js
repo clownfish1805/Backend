@@ -1,155 +1,127 @@
-const express = require("express");
-const cors = require("cors");
+const express  = require("express");
+const cors     = require("cors");
 const mongoose = require("mongoose");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+const multer   = require("multer");
+const path     = require("path");
+const fs       = require("fs");
 const { create } = require("xmlbuilder2");
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 8080;
 
-// ─────────────────────────────────────────────────────────────
-// 1. ALLOW BOTH FRONT‑END ORIGINS
-// ─────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
+   1. CORS
+───────────────────────────────────────────────────────────── */
 const allowedOrigins = [
-  "https://www.ijeae.com",
-  "https://ijeae-upload-pi.vercel.app"
+  "https://ijeae-upload-pi.vercel.app",  // ← your front‑end
+  "https://www.ijeae.com"                // keep if you use this later
 ];
 
-const corsOptions = {
-  origin: allowedOrigins,                     // NEW (simpler than custom fn)
+app.use(cors({
+  origin: allowedOrigins,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
-};
+}));
+app.options("*", cors());               // reply to pre‑flights quickly
 
-app.use(cors(corsOptions));
-// Answer every browser pre‑flight quickly
-app.options("*", cors(corsOptions));          // NEW
-
-// ─────────────────────────────────────────────────────────────
-// 2. FORCE HTTPS (IMPORTANT—fixes the 301→HTTP redirect & CORS)
-// ─────────────────────────────────────────────────────────────
-app.set("trust proxy", true);                 // NEW (so req.secure works)
-
-app.use((req, res, next) => {                 // NEW
-  // Already HTTPS → proceed
-  if (req.secure || req.headers["x-forwarded-proto"] === "https") {
-    return next();
-  }
-  // Redirect HTTP → HTTPS
-  return res.redirect(301, "https://" + req.headers.host + req.originalUrl);
+/* ─────────────────────────────────────────────────────────────
+   2. CSP — allow <iframe> on Vercel site
+───────────────────────────────────────────────────────────── */
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "frame-ancestors 'self' https://ijeae-upload-pi.vercel.app"
+  );
+  res.removeHeader("X-Frame-Options");   // avoid conflicts
+  next();
 });
 
-// ─────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
+   3. Force HTTPS
+───────────────────────────────────────────────────────────── */
+app.set("trust proxy", true);
+app.use((req, res, next) => {
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") return next();
+  return res.redirect(307, "https://" + req.headers.host + req.originalUrl);
+});
+
+/* ------------------------------------------------------------ */
 app.use(express.json());
 
-// …………………………………………………………………………………
-// NO CHANGES BELOW THIS COMMENT — all your existing code stays the same
-// …………………………………………………………………………………
-
+/* ─────────────────────────────────────────────────────────────
+   DB + upload setup
+───────────────────────────────────────────────────────────── */
 const Publication = require(path.join(__dirname, "model/publicationSchema"));
-const uploadsDir = path.join(__dirname, "uploads");
+const uploadsDir  = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// ---------- MULTER STORAGE SETUP ----------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) =>
-    cb(null, `${Date.now()}${path.extname(file.originalname)}`)
+  filename:    (req, file, cb) => cb(null, `${Date.now()}${path.extname(file.originalname)}`)
 });
 const upload = multer({
   storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") cb(null, true);
-    else cb(new Error("Only PDF files are allowed!"));
-  }
+  fileFilter: (req, file, cb) =>
+    file.mimetype === "application/pdf"
+      ? cb(null, true)
+      : cb(new Error("Only PDF files are allowed!"))
 });
 
-// ---------- MIDDLEWARE ----------
-app.use((req, res, next) => {
+/* middleware: simple logger */
+app.use((req, _res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
 
-
-// ---------- CONNECT TO DB ----------
-const connectDB = async () => {
+/* ─────────────────────────────────────────────────────────────
+   DB connection
+───────────────────────────────────────────────────────────── */
+async function connectDB() {
   try {
-    await mongoose.connect(
-      "mongodb://admin:ijeae@61.2.79.154:27017/db_publications"
-    );
+    await mongoose.connect("mongodb://admin:ijeae@61.2.79.154:27017/db_publications");
     console.log("Connected to MongoDB");
   } catch (err) {
     console.error("MongoDB Connection Error:", err.message);
     process.exit(1);
   }
-};
+}
 
-// ---------- UTILITY FUNCTION ----------
-const generateXML = (publication) => {
-  return create({ version: "1.0" })
+/* ─────────────────────────────────────────────────────────────
+   Helper to generate XML
+───────────────────────────────────────────────────────────── */
+const generateXML = (p) =>
+  create({ version: "1.0" })
     .ele("publication")
-    .ele("title")
-    .txt(publication.title)
-    .up()
-    .ele("author")
-    .txt(publication.author)
-    .up()
-    .ele("volume")
-    .txt(publication.volume)
-    .up()
-    .ele("issue")
-    .txt(publication.issue)
-    .up()
-    .ele("year")
-    .txt(publication.year)
-    .up()
-    .ele("doi")
-    .txt(publication.doi || "")
-    .up()
-    .ele("isSpecialIssue")
-    .txt(String(publication.isSpecialIssue))
-    .up()
-    .ele("content")
-    .txt(publication.content)
-    .up()
-    .ele("id")
-    .txt(publication._id.toString())
-    .up()
+      .ele("title").txt(p.title).up()
+      .ele("author").txt(p.author).up()
+      .ele("volume").txt(p.volume).up()
+      .ele("issue").txt(p.issue).up()
+      .ele("year").txt(p.year).up()
+      .ele("doi").txt(p.doi || "").up()
+      .ele("isSpecialIssue").txt(String(p.isSpecialIssue)).up()
+      .ele("content").txt(p.content).up()
+      .ele("id").txt(p._id.toString()).up()
     .end({ prettyPrint: true });
-};
 
-// ---------- ROUTES ----------
+/* ─────────────────────────  ROUTES  ───────────────────────── */
 
-// ---------- VIEW PDF INLINE ----------
+/* ---------- VIEW PDF INLINE ---------- */
 app.get("/view-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid ID" });
 
-    const publication = await Publication.findById(id);
-    if (!publication || !publication.pdf)
-      return res.status(404).json({ error: "PDF not found" });
+    const pub = await Publication.findById(id);
+    if (!pub || !pub.pdf) return res.status(404).json({ error: "PDF not found" });
 
-    // ✅ Fix: Replace backslashes with slashes
-    const safeRelPath = publication.pdf.replace(/\\/g, "/");
-    const pdfPath = path.join(__dirname, safeRelPath);
+    /* Fix: Replace backslashes */
+    const pdfPath = path.join(__dirname, pub.pdf.replace(/\\/g, "/"));
+    if (!fs.existsSync(pdfPath)) return res.status(404).json({ error: "File missing" });
 
-    if (!fs.existsSync(pdfPath))
-      return res.status(404).json({ error: "File missing" });
-
-    res.setHeader(
-      "Content-Type",
-      publication.pdfContentType || "application/pdf"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      `inline; filename="${publication.title || "document"}.pdf"`
-    );
-
+    res.setHeader("Content-Type", pub.pdfContentType || "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${pub.title || "document"}.pdf"`);
     fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     console.error(err.message);
@@ -157,30 +129,22 @@ app.get("/view-pdf/:id", async (req, res) => {
   }
 });
 
-
-// ---------- DOWNLOAD PDF ----------
+/* ---------- DOWNLOAD PDF ---------- */
 app.get("/download-pdf/:id", async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid ID" });
 
-    const publication = await Publication.findById(id);
-    if (!publication || !publication.pdf)
-      return res.status(404).json({ error: "PDF not found" });
+    const pub = await Publication.findById(id);
+    if (!pub || !pub.pdf) return res.status(404).json({ error: "PDF not found" });
 
-    // ✅ Fix: Replace backslashes with slashes
-    const safeRelPath = publication.pdf.replace(/\\/g, "/");
-    const pdfPath = path.join(__dirname, safeRelPath);
+    /* Fix: Replace backslashes */
+    const pdfPath = path.join(__dirname, pub.pdf.replace(/\\/g, "/"));
+    if (!fs.existsSync(pdfPath)) return res.status(404).json({ error: "File missing" });
 
-    if (!fs.existsSync(pdfPath))
-      return res.status(404).json({ error: "File missing" });
-
-    res.set("Content-Type", publication.pdfContentType);
-    res.set(
-      "Content-Disposition",
-      `attachment; filename="${publication.title}.pdf"`
-    );
+    res.set("Content-Type", pub.pdfContentType);
+    res.set("Content-Disposition", `attachment; filename="${pub.title}.pdf"`);
     fs.createReadStream(pdfPath).pipe(res);
   } catch (err) {
     res.status(500).json({ error: "Download failed" });
