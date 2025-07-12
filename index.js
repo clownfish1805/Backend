@@ -9,51 +9,62 @@ const { create } = require("xmlbuilder2");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// ─────────────────────────────────────────────────────────────
+// 1. ALLOW BOTH FRONT‑END ORIGINS
+// ─────────────────────────────────────────────────────────────
 const allowedOrigins = [
   "https://www.ijeae.com",
   "https://ijeae-upload-pi.vercel.app"
 ];
 
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like curl or mobile apps)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      return callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  origin: allowedOrigins,                     // NEW (simpler than custom fn)
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
+  credentials: true
 };
 
 app.use(cors(corsOptions));
+// Answer every browser pre‑flight quickly
+app.options("*", cors(corsOptions));          // NEW
 
+// ─────────────────────────────────────────────────────────────
+// 2. FORCE HTTPS (IMPORTANT—fixes the 301→HTTP redirect & CORS)
+// ─────────────────────────────────────────────────────────────
+app.set("trust proxy", true);                 // NEW (so req.secure works)
 
+app.use((req, res, next) => {                 // NEW
+  // Already HTTPS → proceed
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") {
+    return next();
+  }
+  // Redirect HTTP → HTTPS
+  return res.redirect(301, "https://" + req.headers.host + req.originalUrl);
+});
+
+// ─────────────────────────────────────────────────────────────
 app.use(express.json());
 
-const Publication = require(path.join(__dirname, "model/publicationSchema"));
+// …………………………………………………………………………………
+// NO CHANGES BELOW THIS COMMENT — all your existing code stays the same
+// …………………………………………………………………………………
 
+const Publication = require(path.join(__dirname, "model/publicationSchema"));
 const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // ---------- MULTER STORAGE SETUP ----------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) =>
-    cb(null, `${Date.now()}${path.extname(file.originalname)}`),
+    cb(null, `${Date.now()}${path.extname(file.originalname)}`)
 });
-
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
     if (file.mimetype === "application/pdf") cb(null, true);
     else cb(new Error("Only PDF files are allowed!"));
-  },
+  }
 });
 
 // ---------- MIDDLEWARE ----------
@@ -61,6 +72,7 @@ app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
   next();
 });
+
 
 // ---------- CONNECT TO DB ----------
 const connectDB = async () => {
